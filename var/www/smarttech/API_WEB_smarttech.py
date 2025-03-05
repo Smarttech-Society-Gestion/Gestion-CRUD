@@ -3,6 +3,7 @@ import mysql.connector
 
 app = Flask(__name__)
 
+# 🔹 Connexion à la base de données
 def connecter_db():
     return mysql.connector.connect(
         host="localhost",
@@ -15,6 +16,7 @@ def connecter_db():
 def home():
     return render_template('smarttech.html')  # Afficher l'interface web
 
+# 🔹 Lire toutes les données d'une table
 @app.route('/api/<table>', methods=['GET'])
 def lire_donnees(table):
     conn = connecter_db()
@@ -25,6 +27,7 @@ def lire_donnees(table):
     conn.close()
     return jsonify(resultats)
 
+# 🔹 Lire une seule entrée (utile pour les modifications)
 @app.route('/api/<table>/<int:id>', methods=['GET'])
 def lire_une_donnee(table, id):
     conn = connecter_db()
@@ -33,8 +36,9 @@ def lire_une_donnee(table, id):
     resultat = cursor.fetchone()
     cursor.close()
     conn.close()
-    return jsonify(resultat)
+    return jsonify(resultat or {})
 
+# 🔹 Créer une nouvelle entrée
 @app.route('/api/<table>', methods=['POST'])
 def creer_donnee(table):
     conn = connecter_db()
@@ -46,49 +50,61 @@ def creer_donnee(table):
     placeholders = ', '.join(['%s'] * len(valeurs))
     
     query = f"INSERT INTO {table} ({colonnes}) VALUES ({placeholders})"
-    cursor.execute(query, valeurs)
-    conn.commit()
     
-    cursor.close()
-    conn.close()
+    try:
+        cursor.execute(query, valeurs)
+        conn.commit()
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
     return jsonify({"message": "Donnée ajoutée avec succès!"})
 
+# 🔹 Modifier une entrée existante
 @app.route('/api/<table>/<int:id>', methods=['PUT'])
 def mettre_a_jour_donnee(table, id):
     conn = connecter_db()
     cursor = conn.cursor()
     data = request.json
 
-    print("Données reçues pour mise à jour:", data)  # Ajoute cette ligne
-
     set_clause = ', '.join([f"{col} = %s" for col in data.keys()])
     valeurs = tuple(data.values()) + (id,)
 
     query = f"UPDATE {table} SET {set_clause} WHERE id = %s"
-    
+
     try:
         cursor.execute(query, valeurs)
         conn.commit()
-        return jsonify({"message": "Mise à jour réussie!"})
-    except Exception as e:
-        print("Erreur SQL:", e)  # Affiche l'erreur SQL
-        return jsonify({"error": str(e)}), 500
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({"error": str(err)}), 500
     finally:
         cursor.close()
         conn.close()
 
+    return jsonify({"message": "Mise à jour réussie!"})
+
+# 🔹 Supprimer une entrée
 @app.route('/api/<table>/<int:id>', methods=['DELETE'])
 def supprimer_donnee(table, id):
     conn = connecter_db()
     cursor = conn.cursor()
     query = f"DELETE FROM {table} WHERE id = %s"
-    cursor.execute(query, (id,))
-    conn.commit()
-    
-    cursor.close()
-    conn.close()
+
+    try:
+        cursor.execute(query, (id,))
+        conn.commit()
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({"error": str(err)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
     return jsonify({"message": "Suppression réussie!"})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
-
