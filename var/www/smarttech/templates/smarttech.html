@@ -9,20 +9,32 @@
 <body class="container mt-4">
     <h2 class="text-center">Gestion SmartTech</h2>
 
+    <!-- Lien vers Roundcube -->
+    <div class="text-end mb-3">
+        <a href="http://mail.smarttech.sn/mail" target="_blank" class="btn btn-primary">Accéder à IredAdmin</a>
+    </div>
+
     <!-- Sélection de la table -->
-    <select id="table-select" class="form-select my-3">
-        <option value="employe">Employés</option>
-        <option value="client">Clients</option>
-        <option value="documents">Documents</option>
-    </select>
+    <div class="mb-3">
+        <label for="table-select" class="form-label">Sélectionner une table :</label>
+        <select id="table-select" class="form-select">
+            <option value="employe">Employés</option>
+            <option value="client">Clients</option>
+            <option value="documents">Documents</option>
+        </select>
+    </div>
 
     <!-- Tableau des données -->
-    <table class="table table-bordered">
-        <thead>
-            <tr id="table-head"></tr>
-        </thead>
-        <tbody id="table-body"></tbody>
-    </table>
+    <div class="table-responsive">
+        <table class="table table-bordered">
+            <thead id="table-head">
+                <!-- Les en-têtes de colonnes seront générés dynamiquement ici -->
+            </thead>
+            <tbody id="table-body">
+                <!-- Les lignes de données seront générées dynamiquement ici -->
+            </tbody>
+        </table>
+    </div>
 
     <!-- Formulaire d'ajout/modification -->
     <h3 id="form-title">Ajouter un employé</h3>
@@ -35,18 +47,18 @@
     <script>
     document.addEventListener("DOMContentLoaded", () => {
         const tableSelect = document.getElementById("table-select");
+        const tableHead = document.getElementById("table-head");
+        const tableBody = document.getElementById("table-body");
         const formTitle = document.getElementById("form-title");
         const submitBtn = document.getElementById("submit-btn");
         const cancelEdit = document.getElementById("cancel-edit");
         let editingId = null;
 
-        tableSelect.addEventListener("change", () => {
-            resetForm();
-            loadTableData();
-        });
-        cancelEdit.addEventListener("click", resetForm);
-        loadTableData();
+        // Charger les données de la table sélectionnée
+        tableSelect.addEventListener("change", loadTableData);
+        loadTableData(); // Charger les données au chargement de la page
 
+        // Fonction pour charger les données de la table
         function loadTableData() {
             const table = tableSelect.value;
             fetch(`/api/${table}`)
@@ -54,36 +66,49 @@
                 .then(data => {
                     updateTable(data);
                     resetForm();
+                })
+                .catch(error => {
+                    console.error("Erreur lors du chargement des données :", error);
+                    tableBody.innerHTML = `<tr><td colspan="100%" class="text-center">Aucune donnée disponible</td></tr>`;
                 });
         }
 
+        // Mettre à jour le tableau avec les données reçues
         function updateTable(data) {
-            const thead = document.getElementById("table-head");
-            const tbody = document.getElementById("table-body");
-            tbody.innerHTML = "";
+            // Vider le tableau
+            tableHead.innerHTML = "";
+            tableBody.innerHTML = "";
 
-            if (data.length === 0) return;
+            if (data.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="100%" class="text-center">Aucune donnée disponible</td></tr>`;
+                return;
+            }
 
-            thead.innerHTML = Object.keys(data[0]).map(key => `<th>${key}</th>`).join('') + "<th>Actions</th>";
+            // Générer les en-têtes de colonnes
+            const headers = Object.keys(data[0]);
+            tableHead.innerHTML = `<tr>${headers.map(header => `<th>${header}</th>`).join("")}<th>Actions</th></tr>`;
 
+            // Générer les lignes de données
             data.forEach(row => {
-                let tr = document.createElement("tr");
-                Object.keys(row).forEach(key => {
-                    let td = document.createElement("td");
-                    td.textContent = row[key];
+                const tr = document.createElement("tr");
+                headers.forEach(header => {
+                    const td = document.createElement("td");
+                    td.textContent = row[header];
                     tr.appendChild(td);
                 });
 
-                let actionsTd = document.createElement("td");
+                // Ajouter les boutons d'actions
+                const actionsTd = document.createElement("td");
                 actionsTd.innerHTML = `
                     <button onclick="editEntry('${tableSelect.value}', ${row.id})" class="btn btn-warning btn-sm">Modifier</button>
                     <button onclick="deleteEntry('${tableSelect.value}', ${row.id})" class="btn btn-danger btn-sm">Supprimer</button>
                 `;
                 tr.appendChild(actionsTd);
-                tbody.appendChild(tr);
+                tableBody.appendChild(tr);
             });
         }
 
+        // Mettre à jour les champs du formulaire
         function updateFormFields(data = {}) {
             const table = tableSelect.value;
             const labels = {
@@ -91,12 +116,13 @@
                 client: "Client",
                 documents: "Document"
             };
+
             const fields = {
                 employe: ['nom', 'prenom', 'email', 'poste', 'date_embauche'],
                 client: ['nom', 'email', 'telephone', 'adresse'],
                 documents: ['nom', 'employe_id']
             };
-            
+
             const formFields = document.getElementById("form-fields");
             formFields.innerHTML = fields[table].map(field => `
                 <input class="form-control my-2" name="${field}" placeholder="${field}" value="${data[field] || ''}" required>
@@ -104,7 +130,7 @@
 
             if (editingId) {
                 let entityName = table === "employe" ? `${data.prenom || ""} ${data.nom || ""}`.trim() : data.nom || `ID: ${editingId}`;
-                formTitle.textContent = `Modification du ${labels[table]} : ${entityName}`;
+                formTitle.textContent = `Modification de ${labels[table]} : ${entityName}`;
                 submitBtn.textContent = "Modifier";
             } else {
                 formTitle.textContent = `Ajouter un ${labels[table]}`;
@@ -112,6 +138,7 @@
             }
         }
 
+        // Gérer la soumission du formulaire
         document.getElementById("data-form").addEventListener("submit", function(event) {
             event.preventDefault();
             const table = tableSelect.value;
@@ -135,6 +162,7 @@
             });
         });
 
+        // Fonction pour éditer une entrée
         window.editEntry = function(table, id) {
             fetch(`/api/${table}/${id}`)
                 .then(response => response.json())
@@ -145,15 +173,19 @@
                 });
         };
 
+        // Réinitialiser le formulaire
         function resetForm() {
             editingId = null;
             updateFormFields();
             cancelEdit.style.display = "none";
         }
 
+        // Fonction pour supprimer une entrée
         window.deleteEntry = function(table, id) {
-            fetch(`/api/${table}/${id}`, { method: "DELETE" })
-                .then(() => loadTableData());
+            if (confirm("Êtes-vous sûr de vouloir supprimer cette entrée ?")) {
+                fetch(`/api/${table}/${id}`, { method: "DELETE" })
+                    .then(() => loadTableData());
+            }
         };
     });
     </script>
